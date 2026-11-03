@@ -17,6 +17,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 
 import gi
 
@@ -150,6 +151,7 @@ class VentoyWindow(Adw.ApplicationWindow):
         self.set_default_size(580, 820)
         self.disks = []
         self.proc = None
+        self.json_busy = False
         self.last_output = []
 
         self.toasts = Adw.ToastOverlay()
@@ -383,7 +385,7 @@ class VentoyWindow(Adw.ApplicationWindow):
         self.mount_btn.set_visible(bool(has and d["ventoy"] and not d["mountpoint"]))
         self.mount_btn.set_sensitive(not busy)
         self.open_btn.set_visible(mounted)
-        self.save_json_btn.set_sensitive(mounted and not busy)
+        self.save_json_btn.set_sensitive(mounted and not busy and not self.json_busy)
         # nella modalità non distruttiva lo stile resta quello del disco
         nd = self.nd_row.get_active()
         self.style_row.set_sensitive(not nd)
@@ -413,35 +415,54 @@ class VentoyWindow(Adw.ApplicationWindow):
         d = self.current_disk()
         if not d or not d["mountpoint"]:
             return
-        path = self.json_path(d)
-        data = {}
-        if os.path.exists(path):
-            try:
+        values = ("1" if self.bypass_row.get_active() else "0",
+                  "1" if self.nro_row.get_active() else "0")
+        self.json_busy = True
+        self.save_json_btn.set_label("Scrivo…")
+        self.update_sensitivity()
+        # tutto l'I/O in un thread: se sulla chiavetta c'è ancora una ISO in cache
+        # da scrivere, la scrittura può aspettare minuti e la finestra non deve bloccarsi
+        threading.Thread(target=self._write_json_thread, args=(self.json_path(d), values),
+                         daemon=True).start()
+
+    def _write_json_thread(self, path, values):
+        try:
+            data = {}
+            if os.path.exists(path):
                 with open(path) as f:
                     data = json.load(f)
                 if not isinstance(data, dict):
                     raise ValueError
-            except (OSError, ValueError):
-                self.alert("ventoy.json non valido",
-                           f"{path} esiste ma non è JSON valido: correggilo o cancellalo prima.")
-                return
-        control = [c for c in data.get("control", [])
-                   if not (isinstance(c, dict) and any(k in c for k in WIN11_KEYS))]
-        control.append({WIN11_KEYS[0]: "1" if self.bypass_row.get_active() else "0"})
-        control.append({WIN11_KEYS[1]: "1" if self.nro_row.get_active() else "0"})
-        data["control"] = control
-        try:
+            control = [c for c in data.get("control", [])
+                       if not (isinstance(c, dict) and any(k in c for k in WIN11_KEYS))]
+            control.append({WIN11_KEYS[0]: values[0]})
+            control.append({WIN11_KEYS[1]: values[1]})
+            data["control"] = control
             os.makedirs(os.path.dirname(path), exist_ok=True)
             tmp = path + ".tmp"
             with open(tmp, "w") as f:
                 json.dump(data, f, indent=4)
                 f.write("\n")
+                f.flush()
+                os.fsync(f.fileno())  # solo questo file, non tutto il sistema
             os.replace(tmp, path)
-            os.sync()
+            err = None
+        except ValueError:
+            err = ("ventoy.json non valido",
+                   f"{path} esiste ma non è JSON valido: correggilo o cancellalo prima.")
         except OSError as e:
-            self.alert("Scrittura non riuscita", str(e))
-            return
-        self.toast("ventoy.json aggiornato")
+            err = ("Scrittura non riuscita", str(e))
+        GLib.idle_add(self._write_json_done, err)
+
+    def _write_json_done(self, err):
+        self.json_busy = False
+        self.save_json_btn.set_label("Scrivi")
+        self.update_sensitivity()
+        if err:
+            self.alert(*err)
+        else:
+            self.toast("ventoy.json salvato")
+        return False
 
     def mount_part1(self):
         d = self.current_disk()
