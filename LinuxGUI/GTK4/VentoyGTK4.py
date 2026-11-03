@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 # VentoyGTK4 — interfaccia GTK4/libadwaita per Ventoy2Disk.sh
-# Va messo nella cartella del pacchetto Ventoy (accanto a Ventoy2Disk.sh).
 #
-#   python3 VentoyGTK4.py                   avvia l'interfaccia
-#   python3 VentoyGTK4.py --install-desktop crea il lanciatore nel menu di GNOME
+#   python3 VentoyGTK4.py                        avvia l'interfaccia
+#   python3 VentoyGTK4.py --ventoy-dir CARTELLA  usa (e ricorda) quel pacchetto Ventoy
+#   python3 VentoyGTK4.py --install-desktop      crea il lanciatore nel menu di GNOME
+#
+# Serve un pacchetto Linux di Ventoy già estratto (ventoy-x.y.z-linux.tar.gz): viene
+# cercato accanto allo script, nelle cartelle ventoy-* più comuni, oppure scelto
+# dalla finestra; l'ultima scelta è salvata in ~/.config/ventoy-gtk4/config.json.
 #
 # Le operazioni sul disco girano come root tramite pkexec; l'interfaccia no.
 
+import glob
 import json
 import os
 import re
@@ -20,7 +25,9 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 APP_ID = "net.oprtorino.VentoyGTK4"
-VENTOY_DIR = os.path.dirname(os.path.realpath(__file__))
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+CONFIG_FILE = os.path.join(GLib.get_user_config_dir(), "ventoy-gtk4", "config.json")
+VENTOY_DIR = None  # cartella del pacchetto Ventoy in uso (vedi find_ventoy_dir)
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 WIN11_KEYS = ("VTOY_WIN11_BYPASS_CHECK", "VTOY_WIN11_BYPASS_NRO")
 
@@ -28,9 +35,57 @@ WIN11_KEYS = ("VTOY_WIN11_BYPASS_CHECK", "VTOY_WIN11_BYPASS_NRO")
 # --------------------------------------------------------------------------
 # utilità
 # --------------------------------------------------------------------------
-def package_version():
+def is_ventoy_package(path):
+    """Vero se path è un pacchetto Linux di Ventoy già compilato (non i sorgenti)."""
+    return bool(path) and all(os.path.isfile(os.path.join(path, f)) for f in
+                              ("Ventoy2Disk.sh", "boot/boot.img", "ventoy/version"))
+
+
+def load_config():
     try:
-        with open(os.path.join(VENTOY_DIR, "ventoy", "version")) as f:
+        with open(CONFIG_FILE) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_config(**values):
+    cfg = load_config()
+    cfg.update(values)
+    os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(cfg, f, indent=2)
+
+
+def find_ventoy_dir(explicit=None):
+    """Cerca il pacchetto Ventoy: argomento, $VENTOY_DIR, ultima scelta salvata,
+    cartella dello script, poi le cartelle ventoy-x.y.z più comuni (la più recente)."""
+    for cand in (explicit, os.environ.get("VENTOY_DIR"), load_config().get("ventoy_dir"),
+                 SCRIPT_DIR, os.path.join(SCRIPT_DIR, "..", "..", "INSTALL")):
+        if is_ventoy_package(cand):
+            return os.path.realpath(cand)
+    home = os.path.expanduser("~")
+    found = []
+    for pattern in ("ventoy-*", "Downloads/ventoy-*", "Scaricati/ventoy-*",
+                    "Documents/ventoy-*", "Documents/*/ventoy-*", "Documenti/*/ventoy-*",
+                    "Applications/ventoy-*", "opt/ventoy-*"):
+        found += [d for d in glob.glob(os.path.join(home, pattern)) if is_ventoy_package(d)]
+    found += [d for d in glob.glob("/opt/ventoy*") if is_ventoy_package(d)]
+
+    def ver(d):
+        try:
+            return tuple(int(x) for x in package_version(d).split("."))
+        except ValueError:
+            return (0,)
+    return max(found, key=ver) if found else None
+
+
+def package_version(path=None):
+    path = path or VENTOY_DIR
+    if not path:
+        return "?"
+    try:
+        with open(os.path.join(path, "ventoy", "version")) as f:
             return f.read().strip()
     except OSError:
         return "?"
@@ -103,13 +158,23 @@ class VentoyWindow(Adw.ApplicationWindow):
 
         # --- header
         header = Adw.HeaderBar()
-        header.set_title_widget(Adw.WindowTitle(title="Ventoy",
-                                                subtitle=f"Pacchetto {package_version()}"))
+        self.title = Adw.WindowTitle(title="Ventoy")
+        header.set_title_widget(self.title)
+        self.folder_btn = Gtk.Button(icon_name="folder-symbolic",
+                                     tooltip_text="Scegli la cartella del pacchetto Ventoy")
+        self.folder_btn.connect("clicked", lambda *_: self.choose_package())
+        header.pack_end(self.folder_btn)
         self.refresh_btn = Gtk.Button(icon_name="view-refresh-symbolic",
                                       tooltip_text="Aggiorna l'elenco dei dispositivi")
         self.refresh_btn.connect("clicked", lambda *_: self.reload_disks())
         header.pack_start(self.refresh_btn)
         view.add_top_bar(header)
+
+        self.banner = Adw.Banner(title="Pacchetto Ventoy non trovato: scarica ventoy-x.y.z-linux.tar.gz, "
+                                       "estrailo e indicami la cartella",
+                                 button_label="Scegli…")
+        self.banner.connect("button-clicked", lambda *_: self.choose_package())
+        view.add_top_bar(self.banner)
 
         page = Adw.PreferencesPage()
         view.set_content(page)
@@ -218,13 +283,42 @@ class VentoyWindow(Adw.ApplicationWindow):
         bottom.append(btns)
         view.add_bottom_bar(bottom)
 
-        if not os.path.isfile(os.path.join(VENTOY_DIR, "Ventoy2Disk.sh")):
-            GLib.idle_add(self.alert, "Cartella di Ventoy non trovata",
-                          f"Metti VentoyGTK4.py nella cartella del pacchetto Ventoy "
-                          f"(accanto a Ventoy2Disk.sh).\n\nCartella attuale: {VENTOY_DIR}")
-
+        self.update_package_ui()
         self.reload_disks()
         GLib.timeout_add_seconds(3, self.poll_disks)
+
+    # ---------------------------------------------------------------- pacchetto
+    def update_package_ui(self):
+        ok = is_ventoy_package(VENTOY_DIR)
+        self.banner.set_revealed(not ok)
+        self.title.set_subtitle(f"Pacchetto {package_version()}" if ok else "Nessun pacchetto")
+        self.folder_btn.set_tooltip_text(
+            f"Pacchetto in uso: {VENTOY_DIR}\nClic per cambiarlo" if ok
+            else "Scegli la cartella del pacchetto Ventoy")
+
+    def choose_package(self):
+        dlg = Gtk.FileDialog(title="Cartella del pacchetto Ventoy (contiene Ventoy2Disk.sh)")
+        if VENTOY_DIR:
+            dlg.set_initial_folder(Gio.File.new_for_path(VENTOY_DIR))
+        dlg.select_folder(self, None, self.on_package_chosen)
+
+    def on_package_chosen(self, dlg, res):
+        global VENTOY_DIR
+        try:
+            path = dlg.select_folder_finish(res).get_path()
+        except GLib.Error:
+            return  # annullato
+        if not is_ventoy_package(path):
+            self.alert("Non è un pacchetto Ventoy",
+                       f"In {path} mancano Ventoy2Disk.sh, boot/boot.img o ventoy/version.\n\n"
+                       "Serve la cartella estratta da ventoy-x.y.z-linux.tar.gz "
+                       "(i sorgenti del repository non bastano).")
+            return
+        VENTOY_DIR = os.path.realpath(path)
+        save_config(ventoy_dir=VENTOY_DIR)
+        self.update_package_ui()
+        self.update_sensitivity()
+        self.toast(f"Uso Ventoy {package_version()}")
 
     # ------------------------------------------------------------------ dischi
     def current_disk(self):
@@ -278,7 +372,7 @@ class VentoyWindow(Adw.ApplicationWindow):
     def update_sensitivity(self):
         d = self.current_disk()
         busy = self.proc is not None
-        has = d is not None
+        has = d is not None and is_ventoy_package(VENTOY_DIR)
         self.install_btn.set_sensitive(has and not busy)
         self.update_btn.set_sensitive(has and not busy and d["ventoy"])
         self.info_btn.set_sensitive(has and not busy and d["ventoy"])
@@ -526,23 +620,51 @@ class VentoyApp(Adw.Application):
 
 
 def install_desktop():
-    apps = os.path.expanduser("~/.local/share/applications")
+    apps = os.path.join(GLib.get_user_data_dir(), "applications")
     os.makedirs(apps, exist_ok=True)
-    icon = os.path.join(VENTOY_DIR, "WebUI", "static", "img", "VentoyLogo.png")
+    icon = next((p for p in (os.path.join(SCRIPT_DIR, "..", "..", "ICON", "logo_256.png"),
+                             os.path.join(VENTOY_DIR or "", "WebUI", "static", "img", "VentoyLogo.png"))
+                 if os.path.isfile(p)), "drive-removable-media")
     path = os.path.join(apps, "ventoy-gtk4.desktop")
     with open(path, "w") as f:
         f.write("[Desktop Entry]\n"
                 "Name=Ventoy\n"
-                "Comment=Crea chiavette USB multiboot\n"
+                "GenericName=Chiavette USB multiboot\n"
+                "Comment=Installa e aggiorna Ventoy sulle chiavette USB\n"
                 f"Exec=python3 \"{os.path.realpath(__file__)}\"\n"
-                f"Path={VENTOY_DIR}\n"
-                f"Icon={icon if os.path.exists(icon) else 'drive-removable-media'}\n"
-                "Terminal=false\nType=Application\nCategories=System;Utility;\n"
+                f"Icon={os.path.realpath(icon) if os.path.isfile(icon) else icon}\n"
+                "Terminal=false\nType=Application\n"
+                "Categories=System;Utility;\nKeywords=usb;iso;boot;multiboot;\n"
                 f"StartupWMClass={APP_ID}\n")
     print(f"Lanciatore creato: {path}")
+    # nasconde eventuali vecchi lanciatori che aprono la GUI GTK3 originale
+    for old in glob.glob(os.path.join(apps, "*.desktop")):
+        if old == path:
+            continue
+        try:
+            with open(old) as f:
+                text = f.read()
+        except OSError:
+            continue
+        if "VentoyGUI" in text or "Ventoy2Disk.gtk" in text:
+            os.replace(old, old + ".bak")
+            print(f"Vecchio lanciatore disattivato: {old} → {os.path.basename(old)}.bak")
+    os.system(f"update-desktop-database -q {apps} 2>/dev/null")
+    if VENTOY_DIR:
+        save_config(ventoy_dir=VENTOY_DIR)
+        print(f"Pacchetto Ventoy: {VENTOY_DIR}")
+    else:
+        print("Pacchetto Ventoy non trovato: lo potrai scegliere dalla finestra.")
 
 
 if __name__ == "__main__":
+    explicit = None
+    if "--ventoy-dir" in sys.argv:
+        k = sys.argv.index("--ventoy-dir")
+        explicit = sys.argv[k + 1] if k + 1 < len(sys.argv) else None
+    VENTOY_DIR = find_ventoy_dir(explicit)
+    if explicit and VENTOY_DIR:
+        save_config(ventoy_dir=VENTOY_DIR)
     if "--install-desktop" in sys.argv:
         install_desktop()
         sys.exit(0)

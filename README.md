@@ -1,4 +1,4 @@
-> **Ventoy GTK4** — fork di [ventoy/Ventoy](https://github.com/ventoy/Ventoy) con una nuova interfaccia GTK4/libadwaita in Python per Linux: vedi [LinuxGUI/GTK4](LinuxGUI/GTK4/).
+> **Ventoy GTK4** — fork di [ventoy/Ventoy](https://github.com/ventoy/Ventoy) con una nuova interfaccia GTK4/libadwaita in Python per Linux: avviala con `./ventoy-gtk4`, dettagli in [LinuxGUI/GTK4](LinuxGUI/GTK4/).
 
 <h1 align="center">
   <a href=https://www.ventoy.net/>Ventoy</a>

@@ -1,0 +1,6 @@
+#!/bin/sh
+# Avvia Ventoy GTK4 dalla cartella del repository.
+#   ./ventoy-gtk4                       apre l'interfaccia
+#   ./ventoy-gtk4 --install-desktop     aggiunge "Ventoy" al menu delle applicazioni
+#   ./ventoy-gtk4 --ventoy-dir DIR      usa il pacchetto Ventoy estratto in DIR
+exec python3 "$(dirname "$(readlink -f "$0")")/LinuxGUI/GTK4/VentoyGTK4.py" "$@"

@@ -29,19 +29,27 @@ sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 policykit-1 udisks2
 
 ## Uso
 
-Nei pacchetti Linux generati da questo fork `VentoyGTK4.py` è già incluso (lo aggiunge `INSTALL/ventoy_pack.sh`). Con un pacchetto ufficiale, copialo nella cartella del pacchetto accanto a `Ventoy2Disk.sh`:
+Dalla cartella del repository:
 
 ```bash
-cp VentoyGTK4.py ~/ventoy-1.1.18/
-cd ~/ventoy-1.1.18
-./VentoyGTK4.py
+./ventoy-gtk4                    # apre l'interfaccia
+./ventoy-gtk4 --install-desktop  # aggiunge "Ventoy" al menu delle applicazioni
 ```
 
-Per aggiungere "Ventoy" al menu delle applicazioni:
+Il lanciatore del menu punta a questa copia della GUI, quindi dopo un `git pull` usi già la versione aggiornata. Eventuali vecchi lanciatori che aprivano la GUI GTK3 originale (`VentoyGUI.x86_64`) vengono rinominati in `.bak`.
 
-```bash
-./VentoyGTK4.py --install-desktop
-```
+### Il pacchetto Ventoy
+
+I sorgenti del repository non contengono i file compilati (`boot/boot.img`, strumenti in `tool/`), quindi la GUI ha bisogno di un pacchetto Linux di Ventoy già estratto, scaricato dalle [release](https://github.com/ventoy/Ventoy/releases) (`ventoy-x.y.z-linux.tar.gz`). Lo cerca in quest'ordine:
+
+1. `--ventoy-dir DIR` o la variabile d'ambiente `VENTOY_DIR`
+2. l'ultima cartella scelta, salvata in `~/.config/ventoy-gtk4/config.json`
+3. la cartella in cui si trova `VentoyGTK4.py` (così funziona anche copiato dentro un pacchetto)
+4. le cartelle `ventoy-*` in `~`, `~/Downloads`, `~/Documents/*`, `/opt` (prende la versione più recente)
+
+Se non lo trova, compare un avviso con il pulsante per sceglierlo; il pulsante con la cartella in alto a destra permette di cambiarlo in qualsiasi momento.
+
+Nei pacchetti generati da questo fork `VentoyGTK4.py` è già incluso (lo aggiunge `INSTALL/ventoy_pack.sh`).
 
 ## Note
 
