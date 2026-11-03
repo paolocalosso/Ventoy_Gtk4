@@ -248,6 +248,7 @@ cp $OPT VentoyWeb.sh $tmpdir/
 cp $OPT VentoyPlugson.sh $tmpdir/
 cp $OPT VentoyVlnk.sh $tmpdir/
 cp $OPT VentoyGUI* $tmpdir/
+cp $OPT ../LinuxGUI/GTK4/VentoyGTK4.py $tmpdir/
 
 
 cp $OPT README $tmpdir/
@@ -318,6 +319,7 @@ chmod +x $tmpdir/VentoyWeb.sh
 chmod +x $tmpdir/VentoyPlugson.sh
 chmod +x $tmpdir/VentoyVlnk.sh
 chmod +x $tmpdir/VentoyGUI*
+chmod +x $tmpdir/VentoyGTK4.py
 chmod +x $tmpdir/tool/*.sh
 
 for d in i386 x86_64 aarch64 mips64el; do
