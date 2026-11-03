@@ -36,7 +36,7 @@ Dalla cartella del repository:
 ./ventoy-gtk4 --install-desktop  # aggiunge "Ventoy" al menu delle applicazioni
 ```
 
-Il lanciatore del menu punta a questa copia della GUI, quindi dopo un `git pull` usi già la versione aggiornata. Eventuali vecchi lanciatori che aprivano la GUI GTK3 originale (`VentoyGUI.x86_64`) vengono rinominati in `.bak`.
+Il lanciatore del menu (con l'icona in `icons/`, copiata in `~/.local/share/icons/hicolor`) punta a questa copia della GUI, quindi dopo un `git pull` usi già la versione aggiornata. Eventuali vecchi lanciatori che aprivano la GUI GTK3 originale (`VentoyGUI.x86_64`) vengono rinominati in `.bak`.
 
 ### Il pacchetto Ventoy
 
@@ -49,7 +49,7 @@ I sorgenti del repository non contengono i file compilati (`boot/boot.img`, stru
 
 Se non lo trova, compare un avviso con il pulsante per sceglierlo; il pulsante con la cartella in alto a destra permette di cambiarlo in qualsiasi momento.
 
-Nei pacchetti generati da questo fork `VentoyGTK4.py` è già incluso (lo aggiunge `INSTALL/ventoy_pack.sh`).
+Nei pacchetti generati da questo fork `VentoyGTK4.py` è già incluso (lo aggiunge `INSTALL/ventoy_pack.sh`, insieme alla cartella `icons/`).
 
 ## Note
 

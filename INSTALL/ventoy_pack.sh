@@ -249,6 +249,7 @@ cp $OPT VentoyPlugson.sh $tmpdir/
 cp $OPT VentoyVlnk.sh $tmpdir/
 cp $OPT VentoyGUI* $tmpdir/
 cp $OPT ../LinuxGUI/GTK4/VentoyGTK4.py $tmpdir/
+cp $OPT ../LinuxGUI/GTK4/icons $tmpdir/
 
 
 cp $OPT README $tmpdir/

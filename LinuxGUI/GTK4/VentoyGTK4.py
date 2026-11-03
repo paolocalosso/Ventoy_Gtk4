@@ -27,6 +27,7 @@ from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 APP_ID = "net.oprtorino.VentoyGTK4"
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 CONFIG_FILE = os.path.join(GLib.get_user_config_dir(), "ventoy-gtk4", "config.json")
+ICON_DIR = os.path.join(SCRIPT_DIR, "icons")  # icons/hicolor/scalable/apps/<APP_ID>.svg
 VENTOY_DIR = None  # cartella del pacchetto Ventoy in uso (vedi find_ventoy_dir)
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 WIN11_KEYS = ("VTOY_WIN11_BYPASS_CHECK", "VTOY_WIN11_BYPASS_NRO")
@@ -614,6 +615,14 @@ class VentoyApp(Adw.Application):
     def __init__(self):
         super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
 
+    def do_startup(self):
+        Adw.Application.do_startup(self)
+        # l'icona funziona anche lanciando dal repo senza --install-desktop
+        if os.path.isdir(ICON_DIR):
+            from gi.repository import Gdk
+            Gtk.IconTheme.get_for_display(Gdk.Display.get_default()).add_search_path(ICON_DIR)
+        Gtk.Window.set_default_icon_name(APP_ID)
+
     def do_activate(self):
         win = self.get_active_window() or VentoyWindow(self)
         win.present()
@@ -622,17 +631,30 @@ class VentoyApp(Adw.Application):
 def install_desktop():
     apps = os.path.join(GLib.get_user_data_dir(), "applications")
     os.makedirs(apps, exist_ok=True)
-    icon = next((p for p in (os.path.join(SCRIPT_DIR, "..", "..", "ICON", "logo_256.png"),
-                             os.path.join(VENTOY_DIR or "", "WebUI", "static", "img", "VentoyLogo.png"))
-                 if os.path.isfile(p)), "drive-removable-media")
-    path = os.path.join(apps, "ventoy-gtk4.desktop")
+    # icona nel tema hicolor dell'utente, così GNOME la trova per nome
+    icon = "drive-removable-media"
+    src = os.path.join(ICON_DIR, "hicolor", "scalable", "apps", f"{APP_ID}.svg")
+    if os.path.isfile(src):
+        hicolor = os.path.join(GLib.get_user_data_dir(), "icons", "hicolor")
+        dst_dir = os.path.join(hicolor, "scalable", "apps")
+        os.makedirs(dst_dir, exist_ok=True)
+        with open(src, "rb") as fi, open(os.path.join(dst_dir, f"{APP_ID}.svg"), "wb") as fo:
+            fo.write(fi.read())
+        os.system(f"gtk-update-icon-cache -q -t -f {hicolor} 2>/dev/null")
+        icon = APP_ID
+        print(f"Icona installata: {os.path.join(dst_dir, APP_ID + '.svg')}")
+    # il nome del file deve coincidere con l'APP_ID perché GNOME abbini finestra e icona
+    path = os.path.join(apps, f"{APP_ID}.desktop")
+    legacy = os.path.join(apps, "ventoy-gtk4.desktop")  # nome usato dalla prima versione
+    if os.path.exists(legacy):
+        os.remove(legacy)
     with open(path, "w") as f:
         f.write("[Desktop Entry]\n"
                 "Name=Ventoy\n"
                 "GenericName=Chiavette USB multiboot\n"
                 "Comment=Installa e aggiorna Ventoy sulle chiavette USB\n"
                 f"Exec=python3 \"{os.path.realpath(__file__)}\"\n"
-                f"Icon={os.path.realpath(icon) if os.path.isfile(icon) else icon}\n"
+                f"Icon={icon}\n"
                 "Terminal=false\nType=Application\n"
                 "Categories=System;Utility;\nKeywords=usb;iso;boot;multiboot;\n"
                 f"StartupWMClass={APP_ID}\n")
